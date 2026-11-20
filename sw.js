@@ -1,6 +1,6 @@
 // Funzionamento senza internet: i file dell'app restano in cache; la casa e le foto stanno in IndexedDB.
 // Cambiare VERSIONE a ogni pubblicazione, cosi' il telefono prende i file nuovi.
-const VERSIONE = 'rilievo-7';
+const VERSIONE = 'rilievo-8';
 const FILE = ['./', 'index.html', 'app.js', 'geometria.js', 'archivio.js', 'pacchetto.js', 'vendor/fflate.js', 'manifest.webmanifest', 'icona.svg'];
 
 self.addEventListener('install', (e) => {

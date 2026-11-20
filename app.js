@@ -17,6 +17,8 @@ let ris = null;        // ultimo risultato di geo.risolvi
 let vb = null;         // viewBox corrente {x, y, w, h}
 let scelto = null;     // muro evidenziato
 let spostaFoto = null; // id della foto in attesa della parete di destinazione
+let quote = [];        // misure scritte sulla pianta che si possono toccare: {x, y, asse, stanza, k}
+const QUOTA_DAL_MURO = 0.3; // metri fra la faccia del muro e la misura scritta
 const SEGNO_LATO = { ovest: '+', nord: '+', est: '-', sud: '-' };
 
 // ------------------------------------------------------------------ stato e operazioni
@@ -174,6 +176,7 @@ function el(tag, attr, padre) {
 }
 
 function disegna() {
+  quote = [];
   ris = geo.risolvi(misure(), opzioni());
   svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
   svg.replaceChildren();
@@ -197,14 +200,41 @@ function disegna() {
   }
   for (const s of ris.stanze) {
     const r = s.rettangoli[0];
-    const cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;
-    el('text', { class: 'nome', x: cx, y: cy - 0.08 }, svg).textContent = s.nome;
-    const t = el('text', { class: 'dim', x: cx, y: cy + 0.22 }, svg);
-    const mx = s.misure[0].x, my = s.misure[0].y;
-    el('tspan', { class: mx.stato }, t).textContent = fmt(mx.valore);
-    el('tspan', { class: 'da_progetto' }, t).textContent = ' × ';
-    el('tspan', { class: my.stato }, t).textContent = fmt(my.valore);
+    el('text', { class: 'nome', x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2 }, svg).textContent = s.nome;
+    const casaS = stato.casa.stanze.find((x) => x.id === s.id);
+    s.rettangoli.forEach(([x0, y0, x1, y1], k) => {
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, sopra = cy - (y1 - y0) / 4; // di lato: piu' in alto del nome
+      // lungo un muro in alto o in basso si legge la misura da sinistra a destra, lungo uno di lato quella dall'alto in basso;
+      // come in una planimetria quotata la stessa misura compare su tutti e due i muri opposti
+      const posti = { nord: [cx, y0 + QUOTA_DAL_MURO, 'x'], sud: [cx, y1 - QUOTA_DAL_MURO, 'x'],
+        ovest: [x0 + QUOTA_DAL_MURO, sopra, 'y'], est: [x1 - QUOTA_DAL_MURO, sopra, 'y'] };
+      const spazio = { x: y1 - y0, y: x1 - x0 }; // quanto e' profonda la stanza davanti al muro
+      for (const [lato, [x, y, asse]] of Object.entries(posti)) {
+        if (!casaS.lati.some((l) => l.rett === k && l.lato === lato && l.tratti.length)) continue; // lato aperto: niente muro
+        if (spazio[asse] < 2 * QUOTA_DAL_MURO + 0.2) continue; // striscia troppo sottile: il numero non ci sta
+        const m = s.misure[k][asse];
+        if (m.valore < 0.6) continue; // muro piu' corto del numero
+        const attr = { class: `quota ${m.stato}`, x, y };
+        if (asse === 'y') attr.transform = `rotate(-90 ${x} ${y})`;
+        el('text', attr, svg).textContent = fmt(m.valore);
+        if (latoDa(casaS, k, asse)) quote.push({ x, y, asse, stanza: casaS, k });
+      }
+    });
   }
+}
+// tocco su una misura scritta: solo se si legge (ingrandita almeno a 8 px), sul testo piu' 6 px di margine;
+// a pianta intera i numeri sono troppo piccoli e un tocco largo ruberebbe quello sulla stanza. Con s >= 40 px/m
+// la zona arriva a 0,12 + 6/40 = 0,27 m dal centro del numero, che sta a QUOTA_DAL_MURO = 0,3 m dal muro:
+// un tocco sul muro non cade mai su un numero. Se due zone si toccano vince il numero piu' vicino.
+function quotaAlTocco([x, y]) {
+  const s = pxPerM();
+  if (0.2 * s < 8) return null;
+  const lungo = 0.32 + 6 / s, corto = 0.12 + 6 / s;
+  const dentro = quote.filter((q) => {
+    const [mx, my] = q.asse === 'x' ? [lungo, corto] : [corto, lungo];
+    return Math.abs(x - q.x) <= mx && Math.abs(y - q.y) <= my;
+  });
+  return dentro.sort((a, b) => Math.hypot(x - a.x, y - a.y) - Math.hypot(x - b.x, y - b.y))[0] || null;
 }
 
 // ------------------------------------------------------------------ fogli (pannelli in basso)
@@ -519,21 +549,27 @@ function mostraConflitto(misura, c) {
   };
 }
 
+// una misura (asse x o y del rettangolo k) si corregge se ha muri su entrambi i lati; si parte dal lato fatto
+// di una faccia sola, cosi' chiediMisura chiede «fino a quale tratto» se e' l'altro ad averne piu' d'una
+function latoDa(casaS, k, asse) {
+  const nomi = asse === 'x' ? ['ovest', 'est'] : ['nord', 'sud'];
+  const pezzi = nomi.map((n) => casaS.lati.filter((l) => l.rett === k && l.lato === n && l.tratti.length));
+  if (pezzi.some((p) => !p.length)) return null;
+  const una = pezzi.find((p) => new Set(p.flatMap((l) => l.tratti).map((t) => t.faccia.toFixed(3))).size === 1);
+  return una ? una[0] : null;
+}
+function correggi(casaS, k, asse) {
+  const l = latoDa(casaS, k, asse);
+  return chiediMisura({ stanza: casaS, lato: l }, l.tratti[0].muro);
+}
+
 function foglioStanza(stanzaId) {
   const s = ris.stanze.find((x) => x.id === stanzaId);
   const alt = [...stato.operazioni].reverse().find((o) => o.tipo === 'altezza' && o.stanza === stanzaId);
   const casaS = stato.casa.stanze.find((x) => x.id === stanzaId);
-  // un lato si corregge da qui se ha muri su entrambi i lati; si parte dal lato fatto di una faccia sola
-  const latoDa = (k, asse) => {
-    const nomi = asse === 'x' ? ['ovest', 'est'] : ['nord', 'sud'];
-    const pezzi = nomi.map((n) => casaS.lati.filter((l) => l.rett === k && l.lato === n && l.tratti.length));
-    if (pezzi.some((p) => !p.length)) return null;
-    const una = pezzi.find((p) => new Set(p.flatMap((l) => l.tratti).map((t) => t.faccia.toFixed(3))).size === 1);
-    return una ? una[0] : null;
-  };
   const voce = (m, k, asse) => {
     const testo = `${ASSE_NOME[asse]} <b class="${m[asse].stato}">${fmt(m[asse].valore)}</b> m`;
-    return latoDa(k, asse) ? `<button data-k="${k}" data-asse="${asse}">✏️ ${testo}</button>` : `<div>${testo}</div>`;
+    return latoDa(casaS, k, asse) ? `<button data-k="${k}" data-asse="${asse}">✏️ ${testo}</button>` : `<div>${testo}</div>`;
   };
   const righe = s.misure.map((m, k) => `${s.misure.length > 1 ? `<div><b>Parte ${k + 1}</b></div>` : ''}${voce(m, k, 'x')}${voce(m, k, 'y')}`).join('');
   apriFoglio(`<h2>${esc(s.nome)}</h2><div class="righe">${righe}
@@ -545,8 +581,7 @@ function foglioStanza(stanzaId) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.asse) {
-      const l = latoDa(+b.dataset.k, b.dataset.asse);
-      return chiediMisura({ stanza: casaS, lato: l }, l.tratti[0].muro);
+      return correggi(casaS, +b.dataset.k, b.dataset.asse);
     }
     if (b.dataset.az !== 'altezza') return chiudiFoglio();
     apriFoglio(`<h2>Altezza di ${esc(s.nome)}</h2><input id="valore" inputmode="decimal" placeholder="es. 2,90">
@@ -602,6 +637,8 @@ function tocco(px, py) {
   ultimoTocco = { x: px, y: py, t: performance.now() };
   if (!ris?.ok) return;
   const p = daSchermo(px, py);
+  const q = quotaAlTocco(p);
+  if (q) return correggi(q.stanza, q.k, q.asse);
   const vicini = muriAlTocco(ris.muri, p, pxPerM());
   const s = ris.stanze.find((x) => x.rettangoli.some((r) => p[0] >= r[0] && p[0] <= r[2] && p[1] >= r[1] && p[1] <= r[3]));
   if (vicini.length === 1) return foglioMuro(vicini[0]);
@@ -640,7 +677,7 @@ $('apriFile').onclick = $('apriFile2').onclick = () => $('fileCasa').click();
 $('fileCasa').onchange = (e) => { if (e.target.files[0]) apriFile(e.target.files[0]); e.target.value = ''; };
 
 // gancio per i collaudi automatici (sola lettura)
-window.__rilievo = { aSchermo, pxPerM, stato: () => stato, risultato: () => ris };
+window.__rilievo = { aSchermo, pxPerM, stato: () => stato, risultato: () => ris, quote: () => quote };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 avvia();
