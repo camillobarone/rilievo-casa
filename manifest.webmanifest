@@ -1,0 +1,10 @@
+{
+  "name": "Rilievo casa",
+  "short_name": "Rilievo",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#1f3a4d",
+  "icons": [{ "src": "icona.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

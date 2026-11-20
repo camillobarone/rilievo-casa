@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a4d">
+<title>Rilievo casa</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icona.svg">
+<style>
+  :root { --blu: #1f3a4d; --misurato: #1b7f3b; --ricalcolato: #c46a00; --progetto: #6b7280; --conflitto: #b42318; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 16px system-ui, sans-serif; color: #111; background: #f4f1ea; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; }
+  header { background: var(--blu); color: #fff; padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header b { font-size: 17px; flex: 1; min-width: 120px; }
+  header .conti { font-size: 13px; opacity: .9; width: 100%; }
+  button { font: inherit; min-height: 48px; min-width: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #c9c2b2; background: #fff; color: #111; }
+  button.primario { background: var(--blu); color: #fff; border-color: var(--blu); }
+  button.avviso { background: var(--conflitto); color: #fff; border-color: var(--conflitto); }
+  header button { background: #2d5672; color: #fff; border-color: #4b7896; }
+  #pianta { flex: 1; touch-action: none; background: #f4f1ea; display: block; width: 100%; }
+  .muro { fill: #3b3b3b; }
+  .muro.mosso { fill: var(--ricalcolato); }
+  .muro.scelto { fill: #1d6fd6; }
+  .muro.bloccato { fill: #000; stroke: #1d6fd6; stroke-width: .04; }
+  .stanza { fill: #fff; stroke: none; }
+  .stanza.est { fill: #e7efe2; }
+  .nome { font-size: .26px; font-weight: 600; text-anchor: middle; fill: #222; pointer-events: none; }
+  .dim { font-size: .22px; text-anchor: middle; pointer-events: none; }
+  .misurato { fill: var(--misurato); } .ricalcolato { fill: var(--ricalcolato); } .da_progetto { fill: var(--progetto); }
+  #zoom { position: fixed; right: 10px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+  #foglio { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 16px 16px 0 0; box-shadow: 0 -4px 20px #0003; padding: 14px; max-height: 75vh; overflow: auto; }
+  #foglio[hidden] { display: none; }
+  #foglio h2 { margin: 0 0 8px; font-size: 18px; }
+  #foglio .righe { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+  #foglio .bottoni { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  #foglio input { font-size: 28px; width: 100%; padding: 8px; border: 2px solid var(--blu); border-radius: 10px; }
+  .nota { font-size: 14px; color: #444; }
+  .legenda { font-size: 13px; display: flex; gap: 12px; padding: 4px 10px; background: #fff; flex-wrap: wrap; }
+  .legenda span::before { content: '■ '; }
+  .legenda .m::before { color: var(--misurato); } .legenda .r::before { color: var(--ricalcolato); } .legenda .p::before { color: var(--progetto); }
+  #avvio { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  #avvio[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <b id="titolo">Rilievo casa</b>
+  <button id="annulla" type="button" disabled>Annulla</button>
+  <button id="apriFile" type="button">Apri casa</button>
+  <button id="invia" type="button">Invia al PC</button>
+  <button id="ricevuta" type="button">Ricevuta</button>
+  <div class="conti" id="conti"></div>
+</header>
+<div class="legenda"><span class="m">misurato</span><span class="r">ricalcolato</span><span class="p">da progetto</span></div>
+<section id="avvio" hidden>
+  <p>Nessuna casa aperta. Apri il link della casa che ti ho mandato, oppure il file <b>.casa.json</b>.</p>
+  <button class="primario" id="apriFile2" type="button">Apri casa da file</button>
+</section>
+<svg id="pianta" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="zoom"><button id="zoomPiu" type="button" aria-label="Ingrandisci">+</button><button id="zoomMeno" type="button" aria-label="Rimpicciolisci">−</button></div>
+<div id="foglio" hidden></div>
+<input id="fileCasa" type="file" accept=".json,application/json" hidden>
+<script type="module" src="app.js"></script>
+</body>
+</html>
