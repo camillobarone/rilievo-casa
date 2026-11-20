@@ -318,38 +318,63 @@ async function metti({ stanza, lato }, muroId) {
 async function inviaAlPC() {
   if (!stato) return;
   if (!ris?.ok) { alert('Le misure sono in conflitto: usa Annulla sull\'ultima, poi invia.'); return; }
-  const tutte = await fotoCasa();
-  const daMandare = [];
-  for (const f of tutte.filter((x) => x.stato_invio !== 'arrivata' && x.stato_invio !== 'persa')) {
-    const bytes = await leggiImmagine(f.id);
-    if (!bytes) { // scheda senza immagine: la foto e' persa, lo si dice e non blocca piu' niente
-      alert(`La foto del ${new Date(f.scattata).toLocaleString('it-IT')} non si trova piu' nel telefono: la segno come persa.`);
-      await scriviFoto(f.id, { ...f, stato_invio: 'persa' });
-      continue;
+  apriFoglio('<h2>Preparo i file…</h2><p class="nota">Un momento.</p>');
+  try {
+    const tutte = await fotoCasa();
+    const daMandare = [];
+    for (const f of tutte.filter((x) => x.stato_invio !== 'arrivata' && x.stato_invio !== 'persa')) {
+      const bytes = await leggiImmagine(f.id);
+      if (!bytes) { // scheda senza immagine: la foto e' persa, lo si dice e non blocca piu' niente
+        alert(`La foto del ${new Date(f.scattata).toLocaleString('it-IT')} non si trova piu' nel telefono: la segno come persa.`);
+        await scriviFoto(f.id, { ...f, stato_invio: 'persa' });
+        continue;
+      }
+      daMandare.push({ ...f, bytes });
     }
-    daMandare.push({ ...f, bytes });
-  }
-  const esportato = new Date().toISOString();
-  const parti = preparaPacchetti({ stato, tutteFoto: tutte, daMandare, muri: muriRilievo(geo, ris), esportato });
-  const file = parti.map((p) => new File([p.bytes], p.nome, { type: 'application/zip' }));
-  let inviato = false;
-  if (navigator.canShare && navigator.canShare({ files: file })) {
-    try { await navigator.share({ files: file, title: `Rilievo ${stato.casa.nome}` }); inviato = true; }
-    catch (e) { if (e.name === 'AbortError') return; console.error(e); }
-  }
-  if (!inviato) { // telefono senza condivisione di file: un bottone per pezzo (i download multipli automatici si bloccano)
+    const esportato = new Date().toISOString();
+    const parti = preparaPacchetti({ stato, tutteFoto: tutte, daMandare, muri: muriRilievo(geo, ris), esportato });
+    const file = parti.map((p) => new File([p.bytes], p.nome, { type: 'application/zip' }));
+    // Chrome su Android non condivide i .zip (canShare falso) e rifiuta una condivisione partita troppo dopo il
+    // tocco: per questo «Condividi» e' un bottone a se', e «Scarica» c'e' sempre.
+    let condivisibile = false;
+    try { condivisibile = !!(navigator.canShare && navigator.canShare({ files: file })); } catch { condivisibile = false; }
     const url = file.map((f) => URL.createObjectURL(f));
-    apriFoglio(`<h2>Scarica i ${file.length} file</h2><p class="nota">Il telefono non sa condividerli: scaricali uno per uno e mandali al PC.</p>
-      <div class="righe">${file.map((f, i) => `<a href="${url[i]}" download="${esc(f.name)}"><button class="primario" tabindex="-1">Scarica pezzo ${i + 1} di ${file.length}</button></a>`).join('')}</div>
+    let segnato = false;
+    const segna = async () => { // inviati (in attesa della ricevuta) solo quando escono davvero dal telefono
+      if (segnato) return;
+      segnato = true;
+      await scriviFotoMolte(daMandare.filter((f) => f.stato_invio === 'da_inviare').map(({ bytes, ...f }) => ({ ...f, stato_invio: 'inviata' })));
+      stato.invii = { ...(stato.invii || {}), [esportato]: daMandare.map((f) => f.id) };
+      stato.ultimoInvio = esportato;
+      await scriviStato(stato);
+      await aggiornaConti();
+    };
+    apriFoglio(`<h2>Pronti ${file.length} file da mandare al PC</h2>
+      <p class="nota">${condivisibile ? 'Tocca «Condividi» e scegli Gmail, Drive o WhatsApp, oppure scaricali.' : 'Scaricali qui sotto, poi mandali al PC: per esempio da Gmail, allegandoli a una mail a te stesso (si trovano in «Download» del telefono).'}
+      Sul PC vanno nella cartella Download, poi doppio clic su «Importa rilievo».</p>
+      ${condivisibile ? '<div class="righe"><button class="primario" data-az="condividi">Condividi</button></div>' : ''}
+      <div class="righe">${file.map((f, i) => `<a href="${url[i]}" download="${esc(f.name)}"><button class="${condivisibile ? '' : 'primario'}" tabindex="-1">Scarica pezzo ${i + 1} di ${file.length}</button></a>`).join('')}</div>
       <div class="bottoni"><button data-az="chiudi">Fatto</button></div>`);
-    foglio.onclick = (e) => { const b = e.target.closest('button[data-az]'); if (b) chiudiFoglio(); };
+    foglio.onclick = async (e) => {
+      if (e.target.closest('a[download]')) { segna(); return; } // il download parte da solo col tocco
+      const b = e.target.closest('button[data-az]');
+      if (!b) return;
+      if (b.dataset.az !== 'condividi') return chiudiFoglio();
+      try {
+        await navigator.share({ files: file, title: `Rilievo ${stato.casa.nome}` });
+        await segna();
+        alert(`Mandati ${file.length} file. Sul PC: doppio clic su «Importa rilievo», poi inquadra il QR con il telefono.`);
+      } catch (err) {
+        if (err.name !== 'AbortError') alert(`La condivisione non e' riuscita (${err.name}). Usa «Scarica».`);
+      }
+    };
+  } catch (e) {
+    console.error(e);
+    apriFoglio(`<h2 style="color:var(--conflitto)">Invio non riuscito</h2><p class="nota">Niente e' stato segnato come inviato.
+      Mandami una foto di questo messaggio: <b>${esc(e?.name || 'Errore')}: ${esc(e?.message || e)}</b></p>
+      <div class="bottoni"><button data-az="chiudi">Chiudi</button></div>`);
+    foglio.onclick = (ev) => { if (ev.target.closest('button[data-az]')) chiudiFoglio(); };
   }
-  await scriviFotoMolte(daMandare.filter((f) => f.stato_invio === 'da_inviare').map(({ bytes, ...f }) => ({ ...f, stato_invio: 'inviata' })));
-  stato.invii = { ...(stato.invii || {}), [esportato]: daMandare.map((f) => f.id) };
-  stato.ultimoInvio = esportato;
-  await scriviStato(stato);
-  await aggiornaConti();
-  if (inviato) alert(`Mandati ${parti.length} file. Sul PC: doppio clic su «Importa rilievo», poi inquadra il QR con il telefono.`);
 }
 
 async function applicaRicevuta(r) {
