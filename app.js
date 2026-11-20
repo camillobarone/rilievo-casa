@@ -9,7 +9,7 @@ const svg = $('pianta');
 const foglio = $('foglio');
 const fmt = (v) => v.toFixed(2).replace('.', ',');
 const LATO_OPPOSTO = { ovest: 'est', est: 'ovest', nord: 'sud', sud: 'nord' };
-const ASSE_NOME = { x: 'est-ovest', y: 'nord-sud' };
+const ASSE_NOME = { x: '↔ da sinistra a destra', y: "↕ dall'alto in basso" }; // come si vede sulla pianta, niente punti cardinali
 
 let stato = null;      // { casa, operazioni: [...] } — salvato per intero a ogni conferma
 let geo = null;
@@ -423,7 +423,7 @@ function inserisciValore(stanza, lato, muroToccato, muroOpposto, valoreIniziale)
   const misura = { tipo: 'distanza', stanza: stanza.id, rett: lato.rett, asse: lato.asse,
     muroA: basso ? muroToccato : muroOpposto, muroB: basso ? muroOpposto : muroToccato };
   const attuale = ris.stanze.find((s) => s.id === stanza.id).misure[lato.rett][lato.asse];
-  apriFoglio(`<h2>${esc(stanza.nome)}, lato ${ASSE_NOME[lato.asse]}</h2>
+  apriFoglio(`<h2>${esc(stanza.nome)}: misura ${ASSE_NOME[lato.asse]}</h2>
     <p class="nota">Oggi in pianta: <b>${fmt(attuale.valore)} m</b> (${attuale.stato.replace('_', ' ')}). Scrivi la misura vera, da muro a muro.</p>
     <input id="valore" inputmode="decimal" autocomplete="off" placeholder="es. 3,52" value="${esc(valoreIniziale)}">
     <div class="bottoni"><button class="primario" data-az="ok">OK</button><button data-az="chiudi">Annulla</button></div>`);
