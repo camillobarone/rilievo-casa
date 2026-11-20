@@ -521,17 +521,33 @@ function mostraConflitto(misura, c) {
 
 function foglioStanza(stanzaId) {
   const s = ris.stanze.find((x) => x.id === stanzaId);
-  const righe = s.misure.map((m, k) => `<div>${s.misure.length > 1 ? `Parte ${k + 1}: ` : ''}est-ovest <b class="${m.x.stato}">${fmt(m.x.valore)}</b> · nord-sud <b class="${m.y.stato}">${fmt(m.y.valore)}</b></div>`).join('');
   const alt = [...stato.operazioni].reverse().find((o) => o.tipo === 'altezza' && o.stanza === stanzaId);
   const casaS = stato.casa.stanze.find((x) => x.id === stanzaId);
+  // un lato si corregge da qui se ha muri su entrambi i lati; si parte dal lato fatto di una faccia sola
+  const latoDa = (k, asse) => {
+    const nomi = asse === 'x' ? ['ovest', 'est'] : ['nord', 'sud'];
+    const pezzi = nomi.map((n) => casaS.lati.filter((l) => l.rett === k && l.lato === n && l.tratti.length));
+    if (pezzi.some((p) => !p.length)) return null;
+    const una = pezzi.find((p) => new Set(p.flatMap((l) => l.tratti).map((t) => t.faccia.toFixed(3))).size === 1);
+    return una ? una[0] : null;
+  };
+  const voce = (m, k, asse) => {
+    const testo = `${ASSE_NOME[asse]} <b class="${m[asse].stato}">${fmt(m[asse].valore)}</b> m`;
+    return latoDa(k, asse) ? `<button data-k="${k}" data-asse="${asse}">✏️ ${testo}</button>` : `<div>${testo}</div>`;
+  };
+  const righe = s.misure.map((m, k) => `${s.misure.length > 1 ? `<div><b>Parte ${k + 1}</b></div>` : ''}${voce(m, k, 'x')}${voce(m, k, 'y')}`).join('');
   apriFoglio(`<h2>${esc(s.nome)}</h2><div class="righe">${righe}
     <div>Superficie ${fmt(s.area)} m²</div>
     <div>Altezza <b class="${alt ? 'misurato' : 'da_progetto'}">${fmt(alt ? alt.valore : casaS.altezza)}</b> m</div></div>
-    <p class="nota">Per correggere un lato tocca uno dei suoi muri.</p>
+    <p class="nota">Tocca una misura per correggerla.</p>
     <div class="bottoni"><button data-az="altezza">Misura altezza</button><button data-az="chiudi">Chiudi</button></div>`);
   foglio.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.asse) {
+      const l = latoDa(+b.dataset.k, b.dataset.asse);
+      return chiediMisura({ stanza: casaS, lato: l }, l.tratti[0].muro);
+    }
     if (b.dataset.az !== 'altezza') return chiudiFoglio();
     apriFoglio(`<h2>Altezza di ${esc(s.nome)}</h2><input id="valore" inputmode="decimal" placeholder="es. 2,90">
       <div class="bottoni"><button class="primario" data-az="ok">OK</button><button data-az="chiudi">Annulla</button></div>`);
@@ -587,19 +603,20 @@ function tocco(px, py) {
   if (!ris?.ok) return;
   const p = daSchermo(px, py);
   const vicini = muriAlTocco(ris.muri, p, pxPerM());
+  const s = ris.stanze.find((x) => x.rettangoli.some((r) => p[0] >= r[0] && p[0] <= r[2] && p[1] >= r[1] && p[1] <= r[3]));
   if (vicini.length === 1) return foglioMuro(vicini[0]);
-  if (vicini.length > 1) {
-    apriFoglio(`<h2>Quale muro?</h2><div class="righe">${vicini.map((m, i) => `<button data-i="${i}">Muro ${esc(stanzeDelMuro(m).map((v) => v.stanza.nome).filter((v, j, a) => a.indexOf(v) === j).join(' / ') || m)}</button>`).join('')}</div>
+  if (vicini.length > 1) { // stanza piccola o angolo: i muri e, se il tocco e' dentro una stanza, la stanza stessa
+    apriFoglio(`<h2>Quale muro?</h2><div class="righe">${s ? `<button class="primario" data-az="stanza">Stanza ${esc(s.nome)}: misure</button>` : ''}${vicini.map((m, i) => `<button data-i="${i}">Muro ${esc(stanzeDelMuro(m).map((v) => v.stanza.nome).filter((v, j, a) => a.indexOf(v) === j).join(' / ') || m)}</button>`).join('')}</div>
       <div class="bottoni"><button data-az="chiudi">Annulla</button></div>`);
     foglio.onclick = (e) => {
       const b = e.target.closest('button');
       if (!b) return;
+      if (b.dataset.az === 'stanza') return foglioStanza(s.id);
       if (b.dataset.az) return chiudiFoglio();
       foglioMuro(vicini[+b.dataset.i]);
     };
     return;
   }
-  const s = ris.stanze.find((x) => x.rettangoli.some((r) => p[0] >= r[0] && p[0] <= r[2] && p[1] >= r[1] && p[1] <= r[3]));
   if (s) return foglioStanza(s.id);
   if (!foglio.hidden) chiudiFoglio();
 }
