@@ -200,20 +200,28 @@ function disegna() {
   }
   for (const s of ris.stanze) {
     const r = s.rettangoli[0];
-    el('text', { class: 'nome', x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2 }, svg).textContent = s.nome;
+    // il nome sta dentro la stanza: nelle stanze strette si rimpicciolisce (una lettera e' larga circa 0,55 volte l'altezza)
+    const corpo = Math.max(0.1, Math.min(0.26, (0.9 * (r[2] - r[0])) / (0.55 * s.nome.length)));
+    el('text', { class: 'nome', x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2, style: `font-size: ${corpo}px` }, svg).textContent = s.nome;
     const casaS = stato.casa.stanze.find((x) => x.id === s.id);
     s.rettangoli.forEach(([x0, y0, x1, y1], k) => {
-      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, sopra = cy - (y1 - y0) / 4; // di lato: piu' in alto del nome
       // lungo un muro in alto o in basso si legge la misura da sinistra a destra, lungo uno di lato quella dall'alto in basso;
-      // come in una planimetria quotata la stessa misura compare su tutti e due i muri opposti
+      // come in una planimetria quotata la stessa misura compare su tutti e due i muri opposti. In una stanza piccola
+      // (un lato sotto i 2 m) i quattro numeri si toccherebbero negli angoli: uno solo per misura, quello di lato sotto il nome
+      const piccola = Math.min(x1 - x0, y1 - y0) < 2;
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const yLato = piccola ? cy + Math.min((y1 - y0) / 2 - 0.25, Math.max(0.35, (y1 - y0) / 4)) : cy - (y1 - y0) / 4; // di lato: lontano dal nome
       const posti = { nord: [cx, y0 + QUOTA_DAL_MURO, 'x'], sud: [cx, y1 - QUOTA_DAL_MURO, 'x'],
-        ovest: [x0 + QUOTA_DAL_MURO, sopra, 'y'], est: [x1 - QUOTA_DAL_MURO, sopra, 'y'] };
+        ovest: [x0 + QUOTA_DAL_MURO, yLato, 'y'], est: [x1 - QUOTA_DAL_MURO, yLato, 'y'] };
+      const scritto = { x: false, y: false };
       const spazio = { x: y1 - y0, y: x1 - x0 }; // quanto e' profonda la stanza davanti al muro
       for (const [lato, [x, y, asse]] of Object.entries(posti)) {
         if (!casaS.lati.some((l) => l.rett === k && l.lato === lato && l.tratti.length)) continue; // lato aperto: niente muro
         if (spazio[asse] < 2 * QUOTA_DAL_MURO + 0.2) continue; // striscia troppo sottile: il numero non ci sta
         const m = s.misure[k][asse];
         if (m.valore < 0.6) continue; // muro piu' corto del numero
+        if (piccola && scritto[asse]) continue;
+        scritto[asse] = true;
         const attr = { class: `quota ${m.stato}`, x, y };
         if (asse === 'y') attr.transform = `rotate(-90 ${x} ${y})`;
         el('text', attr, svg).textContent = fmt(m.valore);
